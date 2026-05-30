@@ -1,0 +1,14 @@
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/croutine.c
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h
+cloud_platform_debugging_project\croutine.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+cloud_platform_debugging_project\croutine.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+cloud_platform_debugging_project\croutine.o: ../Core/Inc/FreeRTOSConfig.h
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/projdefs.h
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/portable.h
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/deprecated_definitions.h
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F/portmacro.h
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/croutine.h
+cloud_platform_debugging_project\croutine.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h
