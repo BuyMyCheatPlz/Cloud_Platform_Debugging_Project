@@ -29,8 +29,15 @@ cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Dr
 cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash.h
 cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash_ex.h
 cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash_ramfunc.h
+cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_i2c.h
+cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_i2c_ex.h
 cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr.h
 cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr_ex.h
 cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h
 cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h
 cloud_platform_debugging_project\usart_rxcallback.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h
+cloud_platform_debugging_project\usart_rxcallback.o: ../Hardwares/CAN_Motor/PID_Controller/Inc/PID_Controller.h
+cloud_platform_debugging_project\usart_rxcallback.o: ../Hardwares/CAN_Motor/Inc/can_motor.h
+cloud_platform_debugging_project\usart_rxcallback.o: ../Core/Inc/can.h
+cloud_platform_debugging_project\usart_rxcallback.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+cloud_platform_debugging_project\usart_rxcallback.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
