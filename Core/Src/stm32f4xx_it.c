@@ -22,6 +22,7 @@
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "usart_rxcallback.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -58,8 +59,6 @@
 extern DMA_HandleTypeDef hdma_uart4_rx;
 extern DMA_HandleTypeDef hdma_uart4_tx;
 extern DMA_HandleTypeDef hdma_usart2_rx;
-extern CAN_HandleTypeDef hcan1;
-extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart4;
 extern TIM_HandleTypeDef htim1;
 
@@ -219,22 +218,6 @@ void TIM1_UP_TIM10_IRQHandler(void)
   /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 1 */
 
   /* USER CODE END TIM1_UP_TIM10_IRQn 1 */
-}
-
-/**
-  * @brief This function handles CAN1 RX0 interrupt.
-  */
-void CAN1_RX0_IRQHandler(void)
-{
-  HAL_CAN_IRQHandler(&hcan1);
-}
-
-/**
-  * @brief This function handles USART2 global interrupt.
-  */
-void USART2_IRQHandler(void)
-{
-  HAL_UART_IRQHandler(&huart2);
 }
 
 /**

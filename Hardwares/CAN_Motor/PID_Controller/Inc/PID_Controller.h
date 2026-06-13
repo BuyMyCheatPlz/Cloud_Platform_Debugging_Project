@@ -81,7 +81,13 @@ void PID_Controller_SetTargetAngleCounts(int32_t motor2_target_count, int32_t mo
 void PID_Controller_SetTargetAngleDegrees(float motor2_target_degree, float motor4_target_degree);
 float PID_Controller_GetMotorCurrentAngleDegrees(uint8_t motor_id);
 float PID_Controller_GetMotorTargetAngleDegrees(uint8_t motor_id);
-HAL_StatusTypeDef PID_Controller_Update(void);
+HAL_StatusTypeDef PID_Controller_Update(float motor2_speed_feedback_rpm, float motor4_speed_feedback_rpm);
+
+/* VOFA PID tuning: set angle/speed PID parameters per motor at runtime */
+void PID_Controller_SetAnglePID(uint8_t motor_id, float kp, float ki, float kd);
+void PID_Controller_SetSpeedPID(uint8_t motor_id, float kp, float ki, float kd);
+void PID_Controller_GetAnglePID(uint8_t motor_id, float *kp, float *ki, float *kd);
+void PID_Controller_GetSpeedPID(uint8_t motor_id, float *kp, float *ki, float *kd);
 
 #ifdef __cplusplus
 }

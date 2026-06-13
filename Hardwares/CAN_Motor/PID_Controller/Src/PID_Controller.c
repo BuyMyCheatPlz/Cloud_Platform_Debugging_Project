@@ -218,7 +218,7 @@ float PID_Controller_GetMotorTargetAngleDegrees(uint8_t motor_id)
   return 0.0f;
 }
 
-HAL_StatusTypeDef PID_Controller_Update(void)
+HAL_StatusTypeDef PID_Controller_Update(float motor2_speed_feedback_rpm, float motor4_speed_feedback_rpm)
 {
   const GM6020_Feedback_t *motor2_feedback;
   const GM6020_Feedback_t *motor4_feedback;
@@ -241,8 +241,8 @@ HAL_StatusTypeDef PID_Controller_Update(void)
   motor2_speed_target = PID_Controller_ComputeSinglePID(&pid_motor_2.angle_pid, (float)pid_motor_2.target_angle_count, (float)pid_motor_2.total_angle_count);
   motor4_speed_target = PID_Controller_ComputeSinglePID(&pid_motor_4.angle_pid, (float)pid_motor_4.target_angle_count, (float)pid_motor_4.total_angle_count);
 
-  motor2_voltage = PID_Controller_ComputeSinglePID(&pid_motor_2.speed_pid, (float)motor2_speed_target, (float)motor2_feedback->speed_rpm);
-  motor4_voltage = PID_Controller_ComputeSinglePID(&pid_motor_4.speed_pid, (float)motor4_speed_target, (float)motor4_feedback->speed_rpm);
+  motor2_voltage = PID_Controller_ComputeSinglePID(&pid_motor_2.speed_pid, (float)motor2_speed_target, motor2_speed_feedback_rpm);
+  motor4_voltage = PID_Controller_ComputeSinglePID(&pid_motor_4.speed_pid, (float)motor4_speed_target, motor4_speed_feedback_rpm);
 
   /* Apply minimum effective voltage deadband to avoid small jittering commands */
   if ((motor2_voltage > 0) && (motor2_voltage < PID_CONTROLLER_MIN_EFFECTIVE_VOLTAGE))
@@ -283,4 +283,111 @@ HAL_StatusTypeDef PID_Controller_Update(void)
   }
 
   return GM6020_SetVoltage(motor2_voltage, motor4_voltage);
+}
+
+/* VOFA PID tuning: runtime parameter setters */
+
+static PID_ControllerPID_t *PID_Controller_GetAnglePidPtr(uint8_t motor_id)
+{
+  if (motor_id == 2U)
+  {
+    return &pid_motor_2.angle_pid;
+  }
+
+  if (motor_id == 4U)
+  {
+    return &pid_motor_4.angle_pid;
+  }
+
+  return NULL;
+}
+
+static PID_ControllerPID_t *PID_Controller_GetSpeedPidPtr(uint8_t motor_id)
+{
+  if (motor_id == 2U)
+  {
+    return &pid_motor_2.speed_pid;
+  }
+
+  if (motor_id == 4U)
+  {
+    return &pid_motor_4.speed_pid;
+  }
+
+  return NULL;
+}
+
+void PID_Controller_SetAnglePID(uint8_t motor_id, float kp, float ki, float kd)
+{
+  PID_ControllerPID_t *pid = PID_Controller_GetAnglePidPtr(motor_id);
+  uint8_t changed;
+
+  if (pid == NULL)
+  {
+    return;
+  }
+
+  changed = 0U;
+  if (kp >= 0.0f) { pid->kp = kp; changed = 1U; }
+  if (ki >= 0.0f) { pid->ki = ki; changed = 1U; }
+  if (kd >= 0.0f) { pid->kd = kd; changed = 1U; }
+
+  /* Reset integral/derivative to avoid wind-up from param jump, only if any param changed */
+  if (changed != 0U)
+  {
+    pid->integral = 0.0f;
+    pid->previous_error = 0.0f;
+    pid->derivative = 0.0f;
+  }
+}
+
+void PID_Controller_SetSpeedPID(uint8_t motor_id, float kp, float ki, float kd)
+{
+  PID_ControllerPID_t *pid = PID_Controller_GetSpeedPidPtr(motor_id);
+  uint8_t changed;
+
+  if (pid == NULL)
+  {
+    return;
+  }
+
+  changed = 0U;
+  if (kp >= 0.0f) { pid->kp = kp; changed = 1U; }
+  if (ki >= 0.0f) { pid->ki = ki; changed = 1U; }
+  if (kd >= 0.0f) { pid->kd = kd; changed = 1U; }
+
+  if (changed != 0U)
+  {
+    pid->integral = 0.0f;
+    pid->previous_error = 0.0f;
+    pid->derivative = 0.0f;
+  }
+}
+
+void PID_Controller_GetAnglePID(uint8_t motor_id, float *kp, float *ki, float *kd)
+{
+  PID_ControllerPID_t *pid = PID_Controller_GetAnglePidPtr(motor_id);
+
+  if (pid == NULL)
+  {
+    return;
+  }
+
+  if (kp != NULL) { *kp = pid->kp; }
+  if (ki != NULL) { *ki = pid->ki; }
+  if (kd != NULL) { *kd = pid->kd; }
+}
+
+void PID_Controller_GetSpeedPID(uint8_t motor_id, float *kp, float *ki, float *kd)
+{
+  PID_ControllerPID_t *pid = PID_Controller_GetSpeedPidPtr(motor_id);
+
+  if (pid == NULL)
+  {
+    return;
+  }
+
+  if (kp != NULL) { *kp = pid->kp; }
+  if (ki != NULL) { *ki = pid->ki; }
+  if (kd != NULL) { *kd = pid->kd; }
 }

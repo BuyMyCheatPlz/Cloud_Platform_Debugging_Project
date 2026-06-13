@@ -47,6 +47,16 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 
+osMessageQueueId_t App_TargetAngleQueueHandle;
+const osMessageQueueAttr_t App_TargetAngleQueue_attributes = {
+  .name = "App_TargetAngleQueue"
+};
+
+osMessageQueueId_t App_VofaQueueHandle;
+const osMessageQueueAttr_t App_VofaQueue_attributes = {
+  .name = "App_VofaQueue"
+};
+
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -76,15 +86,10 @@ const osThreadAttr_t Vofa_Data_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
-/* Definitions for App_TargetAngleQueue */
-osMessageQueueId_t App_TargetAngleQueueHandle;
-const osMessageQueueAttr_t App_TargetAngleQueue_attributes = {
-  .name = "App_TargetAngleQueue"
-};
-/* Definitions for App_VofaQueue */
-osMessageQueueId_t App_VofaQueueHandle;
-const osMessageQueueAttr_t App_VofaQueue_attributes = {
-  .name = "App_VofaQueue"
+/* Definitions for Message_ByPass */
+osMessageQueueId_t Message_ByPassHandle;
+const osMessageQueueAttr_t Message_ByPass_attributes = {
+  .name = "Message_ByPass"
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -122,11 +127,12 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_TIMERS */
 
   /* Create the queue(s) */
+  /* creation of Message_ByPass */
+  Message_ByPassHandle = osMessageQueueNew (16, sizeof(uint16_t), &Message_ByPass_attributes);
   /* creation of App_TargetAngleQueue */
-  App_TargetAngleQueueHandle = osMessageQueueNew (16, sizeof(App_TargetAngleMessage_t), &App_TargetAngleQueue_attributes);
-
+  App_TargetAngleQueueHandle = osMessageQueueNew(8, sizeof(App_TargetAngleMessage_t), &App_TargetAngleQueue_attributes);
   /* creation of App_VofaQueue */
-  App_VofaQueueHandle = osMessageQueueNew (16, sizeof(App_VofaMessage_t), &App_VofaQueue_attributes);
+  App_VofaQueueHandle = osMessageQueueNew(8, sizeof(App_VofaMessage_t), &App_VofaQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */

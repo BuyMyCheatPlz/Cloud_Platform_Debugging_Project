@@ -21,6 +21,7 @@
 #include "cmsis_os.h"
 #include "can.h"
 #include "dma.h"
+#include "i2c.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -97,12 +98,9 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_CAN1_Init();
-  GM6020_CAN1_Init();
-  PID_Controller_Init();
   MX_UART4_Init();
   MX_USART2_UART_Init();
-  Remote_Control_Init();
-  Usart_RxCallBack_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -110,6 +108,10 @@ int main(void)
   /* Init scheduler */
   osKernelInitialize();  /* Call init function for freertos objects (in cmsis_os2.c) */
   MX_FREERTOS_Init();
+
+  /* Start VOFA UART4 DMA idle-line reception */
+  Usart_RxCallBack_Init();
+  Usart_RxCallBack_StartDmaReception();
 
   /* Start scheduler */
   osKernelStart();
@@ -174,6 +176,15 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/* UART4 DMA idle-line reception callback: called by HAL when idle frame detected */
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+  if (huart->Instance == UART4)
+  {
+    Usart_RxCallBack_ProcessRxData(Size);
+  }
+}
 
 /* USER CODE END 4 */
 
