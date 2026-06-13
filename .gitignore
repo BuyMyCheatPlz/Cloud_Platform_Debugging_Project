@@ -1,0 +1,27 @@
+# Node.js dependencies
+node_modules/
+
+# Build output
+build/
+
+# MDK-ARM build artifacts
+MDK-ARM/Cloud_Platform_Debugging_Project/*.axf
+MDK-ARM/Cloud_Platform_Debugging_Project/*.crf
+MDK-ARM/Cloud_Platform_Debugging_Project/*.o
+MDK-ARM/Cloud_Platform_Debugging_Project/*.d
+MDK-ARM/Cloud_Platform_Debugging_Project/*.dep
+MDK-ARM/Cloud_Platform_Debugging_Project/*.htm
+MDK-ARM/Cloud_Platform_Debugging_Project/*.hex
+MDK-ARM/Cloud_Platform_Debugging_Project/*.map
+MDK-ARM/*.lst
+MDK-ARM/Cloud_Platform_Debugging_Project.uvguix.*
+MDK-ARM/RTE/
+MDK-ARM/DebugConfig/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

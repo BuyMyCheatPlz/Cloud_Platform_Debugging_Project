@@ -218,7 +218,7 @@ float PID_Controller_GetMotorTargetAngleDegrees(uint8_t motor_id)
   return 0.0f;
 }
 
-HAL_StatusTypeDef PID_Controller_Update(float motor2_speed_feedback_rpm, float motor4_speed_feedback_rpm)
+HAL_StatusTypeDef PID_Controller_Update(void)
 {
   const GM6020_Feedback_t *motor2_feedback;
   const GM6020_Feedback_t *motor4_feedback;
@@ -241,8 +241,8 @@ HAL_StatusTypeDef PID_Controller_Update(float motor2_speed_feedback_rpm, float m
   motor2_speed_target = PID_Controller_ComputeSinglePID(&pid_motor_2.angle_pid, (float)pid_motor_2.target_angle_count, (float)pid_motor_2.total_angle_count);
   motor4_speed_target = PID_Controller_ComputeSinglePID(&pid_motor_4.angle_pid, (float)pid_motor_4.target_angle_count, (float)pid_motor_4.total_angle_count);
 
-  motor2_voltage = PID_Controller_ComputeSinglePID(&pid_motor_2.speed_pid, (float)motor2_speed_target, motor2_speed_feedback_rpm);
-  motor4_voltage = PID_Controller_ComputeSinglePID(&pid_motor_4.speed_pid, (float)motor4_speed_target, motor4_speed_feedback_rpm);
+  motor2_voltage = PID_Controller_ComputeSinglePID(&pid_motor_2.speed_pid, (float)motor2_speed_target, (float)motor2_feedback->speed_rpm);
+  motor4_voltage = PID_Controller_ComputeSinglePID(&pid_motor_4.speed_pid, (float)motor4_speed_target, (float)motor4_feedback->speed_rpm);
 
   /* Apply minimum effective voltage deadband to avoid small jittering commands */
   if ((motor2_voltage > 0) && (motor2_voltage < PID_CONTROLLER_MIN_EFFECTIVE_VOLTAGE))
