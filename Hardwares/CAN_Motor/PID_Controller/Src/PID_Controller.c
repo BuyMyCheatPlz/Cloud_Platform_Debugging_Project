@@ -1,5 +1,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "PID_Controller.h"
+#include <math.h>
 
 /* Private typedef -----------------------------------------------------------*/
 
@@ -10,6 +11,10 @@
 /* Private variables ---------------------------------------------------------*/
 static PID_ControllerMotor_t pid_motor_2 = {0};
 static PID_ControllerMotor_t pid_motor_4 = {0};
+static float gravity_gain_m4 = PID_CONTROLLER_GRAVITY_GAIN_M4;
+static float gravity_offset_deg = PID_CONTROLLER_GRAVITY_OFFSET_DEG;
+static float m4_descend_ki_active = 0.0f;
+static float m2_reverse_active = 0.0f;
 
 /* Private function prototypes -----------------------------------------------*/
 static float PID_Controller_ClampFloat(float value, float min_value, float max_value);
@@ -239,7 +244,26 @@ HAL_StatusTypeDef PID_Controller_Update(void)
   PID_Controller_UpdateMotorState(&pid_motor_4, motor4_feedback);
 
   motor2_speed_target = PID_Controller_ComputeSinglePID(&pid_motor_2.angle_pid, (float)pid_motor_2.target_angle_count, (float)pid_motor_2.total_angle_count);
-  motor4_speed_target = PID_Controller_ComputeSinglePID(&pid_motor_4.angle_pid, (float)pid_motor_4.target_angle_count, (float)pid_motor_4.total_angle_count);
+
+  /* Direction-dependent KI for M4: descending uses higher KI to eliminate steady-state error,
+     ascending uses default KI to avoid overshoot.
+     Hysteresis: engage KI_DESCEND at 3° error, disengage at 1° to prevent chattering.
+     KI stays set continuously (no save/restore) so integral*KI always accumulates correctly. */
+  {
+    float m4_angle_error = (float)pid_motor_4.target_angle_count - (float)pid_motor_4.total_angle_count;
+    if (m4_angle_error < -(PID_CONTROLLER_KI_DESCEND_ON_THRESHOLD_DEG * 8192.0f / 360.0f))
+    {
+      m4_descend_ki_active = 1.0f;
+    }
+    else if (m4_angle_error > -(PID_CONTROLLER_KI_DESCEND_OFF_THRESHOLD_DEG * 8192.0f / 360.0f))
+    {
+      m4_descend_ki_active = 0.0f;
+    }
+    pid_motor_4.angle_pid.ki = (m4_descend_ki_active > 0.5f)
+      ? PID_CONTROLLER_M4_ANGLE_KI_DESCEND
+      : PID_CONTROLLER_M4_ANGLE_KI;
+    motor4_speed_target = PID_Controller_ComputeSinglePID(&pid_motor_4.angle_pid, (float)pid_motor_4.target_angle_count, (float)pid_motor_4.total_angle_count);
+  }
 
   motor2_voltage = PID_Controller_ComputeSinglePID(&pid_motor_2.speed_pid, (float)motor2_speed_target, (float)motor2_feedback->speed_rpm);
   motor4_voltage = PID_Controller_ComputeSinglePID(&pid_motor_4.speed_pid, (float)motor4_speed_target, (float)motor4_feedback->speed_rpm);
@@ -280,6 +304,84 @@ HAL_StatusTypeDef PID_Controller_Update(void)
   else if (motor4_voltage < -PID_CONTROLLER_MAX_MOTOR_VOLTAGE)
   {
     motor4_voltage = -PID_CONTROLLER_MAX_MOTOR_VOLTAGE;
+  }
+
+   /* Gravity feedforward compensation for pitch axis (M4).
+      Compensates gravity when moving UPWARD (against gravity): ramp compensation
+      up as error shrinks, because PID output also shrinks near target.
+      When moving DOWNWARD (gravity assists), skip compensation so it doesn't
+      counteract the negative PID output and pull the motor back up. */
+  {
+    float target_deg_m4   = PID_Controller_GetMotorTargetAngleDegrees(4U);
+    float current_deg_m4  = PID_Controller_GetMotorCurrentAngleDegrees(4U);
+    float error_deg_m4    = target_deg_m4 - current_deg_m4; /* positive = upward */
+    float error_abs_deg   = fabsf(error_deg_m4);
+    int   moving_upward   = (error_deg_m4 > 0.0f);
+
+    if (moving_upward)
+    {
+      float gravity_scale = 1.0f;
+      if (error_abs_deg > 10.0f)
+      {
+        gravity_scale = 0.2f;
+      }
+      else if (error_abs_deg > 3.0f)
+      {
+        gravity_scale = 0.5f;
+      }
+      motor4_voltage += (int16_t)(PID_Controller_ComputeGravityCompensation() * gravity_scale);
+    }
+    /* descending: no gravity feedforward — gravity already helps the motion */
+
+    if (m4_descend_ki_active > 0.5f)
+    {
+      motor4_voltage -= (int16_t)PID_CONTROLLER_M4_DESCEND_BIAS_VOLTAGE;
+    }
+  }
+
+  /* Re-clamp after gravity compensation */
+  if (motor4_voltage > PID_CONTROLLER_MAX_MOTOR_VOLTAGE)
+  {
+    motor4_voltage = PID_CONTROLLER_MAX_MOTOR_VOLTAGE;
+  }
+  else if (motor4_voltage < -PID_CONTROLLER_MAX_MOTOR_VOLTAGE)
+  {
+    motor4_voltage = -PID_CONTROLLER_MAX_MOTOR_VOLTAGE;
+  }
+
+  /* M2 (yaw) forward-direction friction bias.
+     M2 has almost zero KI (0.002) so integral can't overcome static friction
+     on its own when moving forward → ~1.4° steady-state error.
+     Force-add a small voltage in the forward direction near the target.
+     Hysteresis: engage at 2° error, disengage at 0.05° to prevent chattering. */
+  {
+    float m2_target_deg  = PID_Controller_GetMotorTargetAngleDegrees(2U);
+    float m2_current_deg = PID_Controller_GetMotorCurrentAngleDegrees(2U);
+    float m2_error_deg   = m2_target_deg - m2_current_deg; /* positive = forward */
+
+    if (m2_error_deg > (PID_CONTROLLER_M2_REVERSE_BIAS_ON_THRESHOLD_DEG))
+    {
+      m2_reverse_active = 1.0f;
+    }
+    else if (m2_error_deg < (PID_CONTROLLER_M2_REVERSE_BIAS_OFF_THRESHOLD_DEG))
+    {
+      m2_reverse_active = 0.0f;
+    }
+
+    if (m2_reverse_active > 0.5f)
+    {
+      motor2_voltage += (int16_t)PID_CONTROLLER_M2_REVERSE_BIAS_VOLTAGE;
+    }
+  }
+
+  /* Re-clamp M2 after reverse bias */
+  if (motor2_voltage > PID_CONTROLLER_MAX_MOTOR_VOLTAGE)
+  {
+    motor2_voltage = PID_CONTROLLER_MAX_MOTOR_VOLTAGE;
+  }
+  else if (motor2_voltage < -PID_CONTROLLER_MAX_MOTOR_VOLTAGE)
+  {
+    motor2_voltage = -PID_CONTROLLER_MAX_MOTOR_VOLTAGE;
   }
 
   return GM6020_SetVoltage(motor2_voltage, motor4_voltage);
@@ -376,6 +478,36 @@ void PID_Controller_GetAnglePID(uint8_t motor_id, float *kp, float *ki, float *k
   if (kp != NULL) { *kp = pid->kp; }
   if (ki != NULL) { *ki = pid->ki; }
   if (kd != NULL) { *kd = pid->kd; }
+}
+
+/* Gravity feedforward compensation */
+
+void PID_Controller_SetGravityGain(float gain)
+{
+  if (gain >= 0.0f)
+  {
+    gravity_gain_m4 = gain;
+  }
+}
+
+void PID_Controller_SetGravityOffset(float offset_deg)
+{
+  gravity_offset_deg = offset_deg;
+}
+
+float PID_Controller_ComputeGravityCompensation(void)
+{
+  float angle_rel_deg;
+  float angle_rel_rad;
+
+  if (gravity_gain_m4 == 0.0f)
+  {
+    return 0.0f;
+  }
+
+  angle_rel_deg = PID_Controller_GetMotorCurrentAngleDegrees(4U) - gravity_offset_deg;
+  angle_rel_rad = angle_rel_deg * 3.1415926535f / 180.0f;
+  return gravity_gain_m4 * fabsf(sinf(angle_rel_rad));
 }
 
 void PID_Controller_GetSpeedPID(uint8_t motor_id, float *kp, float *ki, float *kd)

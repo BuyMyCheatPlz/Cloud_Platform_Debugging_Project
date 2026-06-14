@@ -111,6 +111,10 @@ int main(void)
   Usart_RxCallBack_Init();
   Usart_RxCallBack_StartDmaReception();
 
+  /* Start USART2 SBUS remote control interrupt-based reception */
+  Remote_Control_Init();
+  GM6020_CAN1_Init();
+  PID_Controller_Init();
   /* Start scheduler */
   osKernelStart();
 

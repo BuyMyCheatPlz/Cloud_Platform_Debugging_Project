@@ -110,6 +110,9 @@ static float Usart_RxCallBack_ParseFloat(const char *str, uint16_t len)
  *   M2_KP_Angle=10      → set motor-2 angle Kp
  *   M4_KP_Velocity=10   → set motor-4 speed Kp
  *   ... and so on for all combinations.
+ *
+ *   Gravity_Gain=2000!  → set gravity compensation gain for M4
+ *   Gravity_Offset=97.5! → set gravity offset angle (where gravity is zero)
  */
 static void Usart_RxCallBack_ParseLine(const char *line, uint16_t line_len)
 {
@@ -159,6 +162,18 @@ static void Usart_RxCallBack_ParseLine(const char *line, uint16_t line_len)
 
   /* Parse value */
   value = Usart_RxCallBack_ParseFloat(value_start, value_len);
+
+  /* Gravity compensation commands (checked before loop type, as they don't contain Angle/Velocity) */
+  if (Usart_RxCallBack_FindSubstring(line, name_len, "Gravity_Gain", 12U) != NULL)
+  {
+    PID_Controller_SetGravityGain(value);
+    return;
+  }
+  if (Usart_RxCallBack_FindSubstring(line, name_len, "Gravity_Offset", 14U) != NULL)
+  {
+    PID_Controller_SetGravityOffset(value);
+    return;
+  }
 
   /* Determine Angle vs Velocity */
   if (Usart_RxCallBack_FindSubstring(line, name_len, "Velocity", 8U) != NULL)
