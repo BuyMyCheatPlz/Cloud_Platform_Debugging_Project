@@ -19,15 +19,20 @@ extern "C" {
 #define PID_CONTROLLER_ENCODER_COUNTS_PER_REV 8192.0f
 #define PID_CONTROLLER_ENCODER_HALF_REV 4096U
 
-#define PID_CONTROLLER_M2_ANGLE_KP 45.71f
-#define PID_CONTROLLER_M2_ANGLE_KI 0.029f
-#define PID_CONTROLLER_M2_ANGLE_KD 205.0f
-#define PID_CONTROLLER_M2_ANGLE_INTEGRAL_LIMIT 5000.0f
-#define PID_CONTROLLER_M2_ANGLE_OUTPUT_LIMIT 4000.0f
+#define PID_CONTROLLER_M2_ANGLE_KP 131.54f
+#define PID_CONTROLLER_M2_ANGLE_KI 0.025f
+#define PID_CONTROLLER_M2_ANGLE_KD 476.15f
+#define PID_CONTROLLER_M2_ANGLE_INTEGRAL_LIMIT 800.0f
+#define PID_CONTROLLER_M2_ANGLE_OUTPUT_LIMIT 6000.0f
 
-#define PID_CONTROLLER_M4_ANGLE_KP 37.42f
-#define PID_CONTROLLER_M4_ANGLE_KI 0.0f
-#define PID_CONTROLLER_M4_ANGLE_KD 61.59f
+/* Integral reset gain: when error changes sign, integral is multiplied by this
+   factor (0.3 means 70% of accumulated integral is discarded). Prevents integrator
+   windup from prolonging oscillations after error has crossed zero. */
+#define PID_CONTROLLER_INTEGRAL_RESET_GAIN 0.4f
+
+#define PID_CONTROLLER_M4_ANGLE_KP 40.95f
+#define PID_CONTROLLER_M4_ANGLE_KI 0.25f
+#define PID_CONTROLLER_M4_ANGLE_KD 60.6f
 #define PID_CONTROLLER_M4_ANGLE_INTEGRAL_LIMIT 5000.0f
 #define PID_CONTROLLER_M4_ANGLE_OUTPUT_LIMIT 4000.0f
 #define PID_CONTROLLER_M4_ANGLE_KI_DESCEND 0.117f
@@ -37,28 +42,38 @@ extern "C" {
 
 #define PID_CONTROLLER_M2_SPEED_KP 1.12f
 #define PID_CONTROLLER_M2_SPEED_KI 0.0f
-#define PID_CONTROLLER_M2_SPEED_KD 0.0f
+#define PID_CONTROLLER_M2_SPEED_KD 0.5f
 #define PID_CONTROLLER_M2_SPEED_INTEGRAL_LIMIT 6000.0f
 #define PID_CONTROLLER_M2_SPEED_OUTPUT_LIMIT 25000.0f
 
 /* M2 (yaw) reverse-direction friction compensation.
    Overcomes static friction deadzone that causes ~1.4° steady-state error
    when M2 needs to rotate in reverse direction. */
-#define PID_CONTROLLER_M2_REVERSE_BIAS_VOLTAGE 300
-#define PID_CONTROLLER_M2_REVERSE_BIAS_ON_THRESHOLD_DEG  2.0f
-#define PID_CONTROLLER_M2_REVERSE_BIAS_OFF_THRESHOLD_DEG 0.05f
+#define PID_CONTROLLER_M2_REVERSE_BIAS_VOLTAGE 150
+#define PID_CONTROLLER_M2_REVERSE_BIAS_ON_THRESHOLD_DEG  0.5f
+#define PID_CONTROLLER_M2_REVERSE_BIAS_OFF_THRESHOLD_DEG 0.1f
 
-#define PID_CONTROLLER_M4_SPEED_KP 1.36f
-#define PID_CONTROLLER_M4_SPEED_KI 0.05f
+/* M2 (yaw) error-proportional persistent feedforward with soft decay.
+   Outputs a voltage proportional to the remaining angle error.
+   FF_GAIN: voltage per encoder-count at full strength (|error| >= SOFT_START).
+   FF_OUTPUT_LIMIT: maximum feedforward voltage magnitude.
+   FF_SOFT_START_COUNT: below this (encoder counts, ~8.8°) the feedforward
+     linearly decays to zero, handing off smoothly to PID with no hard switch. */
+#define PID_CONTROLLER_M2_FF_GAIN              12.0f
+#define PID_CONTROLLER_M2_FF_OUTPUT_LIMIT      25000.0f
+#define PID_CONTROLLER_M2_FF_SOFT_START_COUNT  250.0f
+
+#define PID_CONTROLLER_M4_SPEED_KP 0.75f
+#define PID_CONTROLLER_M4_SPEED_KI 0.03f
 #define PID_CONTROLLER_M4_SPEED_KD 0.0f
 #define PID_CONTROLLER_M4_SPEED_INTEGRAL_LIMIT 6000.0f
 #define PID_CONTROLLER_M4_SPEED_OUTPUT_LIMIT 25000.0f
 
 /* Maximum motor output voltage magnitude (applied to final command) */
-#define PID_CONTROLLER_MAX_MOTOR_VOLTAGE 12500
+#define PID_CONTROLLER_MAX_MOTOR_VOLTAGE 18500
 
 /* Derivative filter alpha (0..1). Smaller -> stronger smoothing. */
-#define PID_CONTROLLER_DERIVATIVE_ALPHA 0.2f
+#define PID_CONTROLLER_DERIVATIVE_ALPHA 0.18f
 
 /* Minimum output voltage magnitude below which output is treated as zero (deadband)
   Helps to avoid small jittering commands that do not move the motor but cause oscillation. */

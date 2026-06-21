@@ -37,3 +37,4 @@ cloud_platform_debugging_project\pid_controller.o: ../Drivers/STM32F4xx_HAL_Driv
 cloud_platform_debugging_project\pid_controller.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h
 cloud_platform_debugging_project\pid_controller.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h
 cloud_platform_debugging_project\pid_controller.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h
+cloud_platform_debugging_project\pid_controller.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h

@@ -1,124 +1,180 @@
-# 项目概述
+# Cloud Platform Debugging Project
 
-- 本工程为基于 STM32F405（Keil/MDK）平台的云台/平台控制项目。使用 HAL 驱动、FreeRTOS（CMSIS-RTOS2）和 GM6020 电机，通过遥控器控制 motor2 与 motor4 角度，采用两级 PID（角度环 + 速度环）实现位置闭环。速度环反馈来源为 GM6020 电机编码器自带的 `speed_rpm`，不依赖 IMU。
+基于 STM32F405 的**双轴云台调试项目**，使用两个 GM6020 电机分别控制 Pitch（俯仰）和 Yaw（偏航）轴，两级串级 PID + 前馈 + 死区 + 摩擦力补偿。
 
-## 整体架构
+**最新状态：双轴调试完成。M2 偏航轴前馈+D滤波+摩擦偏置，实测跟随稳定；M4 俯仰轴重力补偿正常。**
 
-- 控制：电机用 CAN（GM6020），遥控用 SBUS 解析，串口回传（VOFA）用于遥测和在线调参。
-- 实时任务：按 CMSIS-RTOS2 划分为获取遥控目标、运行 PID、发送遥测三个任务。
+## 硬件连接
 
-## 控制环说明
+| 硬件 | 接口 | 备注 |
+|------|------|------|
+| STM32F405RGT6 | - | 主控 |
+| GM6020 × 2 | CAN1 | Motor 2 (Yaw 偏航), Motor 4 (Pitch 俯仰) |
+| DJI DR16 接收机 | USART3 (PD9) | DBUS 遥控器 |
+| 串口绘图 VOFA+ | USART1 | 调试数据输出（921600 波特率） |
 
-- 级联结构：上层角度环（外环） + 下层速度环（内环）。
-  - 角度环（外环）：以电机编码器累积角度为反馈，计算速度目标。
-  - 速度环（内环）：以 GM6020 反馈的 `speed_rpm`（编码器微分速度）为反馈，计算最终电压命令。
-- 电机映射：motor2（CAN ID 0x206）、motor4（CAN ID 0x208）。
+## 项目结构
 
-## 主要文件与关键函数
+```
+Cloud_Platform_Debugging_Project/
+├── Core/                   # CubeMX 生成的核心代码
+│   ├── Inc/                # HAL 配置头文件
+│   └── Src/                # main.c, 中断服务函数等
+├── Drivers/                # HAL 库 & CMSIS
+├── Hardwares/              # 外设驱动层
+│   ├── CAN_Motor/          # GM6020 电机驱动 + PID 控制器
+│   │   ├── Inc/            # can_motor.h, PID_Controller.h (PID + 前馈参数)
+│   │   └── Src/            # can_motor.c, PID_Controller.c (所有控制算法)
+│   ├── Remote_Control/     # DJI DR16 DBUS 接收机驱动
+│   └── Usart_RxCallBack/   # 串口空闲中断 + 回调框架
+├── APP/                    # 应用层 (FreeRTOS 任务)
+│   ├── Inc/
+│   └── Src/                # task.c (目标发布/控制/遥测三任务)
+├── MDK-ARM/                # Keil MDK 工程文件
+├── Middlewares/            # 第三方中间件 (FreeRTOS)
+└── README.md
+```
 
-### PID 与电机
+## PID 控制架构
 
-- [Hardwares/CAN_Motor/PID_Controller/Inc/PID_Controller.h](Hardwares/CAN_Motor/PID_Controller/Inc/PID_Controller.h)
-- [Hardwares/CAN_Motor/PID_Controller/Src/PID_Controller.c](Hardwares/CAN_Motor/PID_Controller/Src/PID_Controller.c)
-  - `PID_Controller_Init()` / `PID_Controller_Reset()`：初始化/复位 PID 状态。
-  - `PID_Controller_SetTargetAngleDegrees(float m2_deg, float m4_deg)`：设置角度目标。
-  - `PID_Controller_Update(void)`：主更新函数，外环用编码器累积角度计算速度目标，内环用 `GM6020_Feedback_t.speed_rpm` 计算并调用 `GM6020_SetVoltage()`。
+### 控制回路
 
-### CAN 电机驱动
+每个电机采用**串级 PID + 前馈 + 死区 + 摩擦力补偿**：
 
-- [Hardwares/CAN_Motor/Src/can_motor.c](Hardwares/CAN_Motor/Src/can_motor.c)
-  - `GM6020_CAN1_Init()`：CAN 过滤与启动。
-  - `HAL_CAN_RxFifo0MsgPendingCallback()`：解析电机上报，更新 `GM6020_Feedback_t`（含 `encoder`, `speed_rpm`, `current`, `temperature`）。
-  - `GM6020_SetVoltage()`：发送电压命令。
+```
+目标角度 (deg)
+    │
+    ▼
+┌──────────────┐
+│  角度环 PID   │ ◄── 位置反馈 (encoder counts 多圈累积)
+└──────┬───────┘
+       │ 输出 = 速度目标 (rpm)
+       ▼
+┌──────────────┐
+│  速度环 PID   │ ◄── 速度反馈 (rpm, GM6020 编码器微分)
+└──────┬───────┘
+       │ 输出 = 电压 (mV)
+       ▼
+┌──────────────┐
+│ GM6020 电机   │
+└──────────────┘
+```
 
-### 应用任务
+### 增强特性
 
-- [APP/Src/task.c](APP/Src/task.c)
-  - `StartTask02`（目标发布，周期 ~5ms）：读取遥控快照，解码开关和舵柄，计算 motor2/motor4 目标角度，发布到 `App_TargetAngleQueueHandle`。
-  - `StartTask03`（控制主循环，周期 ~5ms）：取目标并调用 `PID_Controller_Update()` 执行两级 PID，发布 VOFA 遥测到 `App_VofaQueueHandle`。
-  - `StartTask04`（遥测传输，周期 ~10ms）：通过 VOFA（JustFloat 格式）发送回传数据。
+#### 1. 积分泄放 & 防饱和 (Integral Decay & Reset)
+- 误差过零时积分缩至 **30%**（`INTEGRAL_RESET_GAIN = 0.3`），防止过冲
+- 每周期自然衰减 0.5%（`INTEGRAL_DECAY = 0.005`），控制积分 windup
 
-## PID 默认参数
+#### 2. 前馈控制 (Feedforward)
+
+**M2（偏航轴）：**
+- 误差比例前馈：`FF_GAIN × error × soft_decay` 直接叠加到最终电压
+- `FF_SOFT_START = 200 counts` 内线性衰减，接近目标时平滑交接给 PID
+- 方向性摩擦偏置：正方向运动时注入 8000mV 克服静摩擦，带 2°↔0.05° 迟滞
+
+**M4（俯仰轴）：**
+- 重力前馈：|sin(angle − offset)| × 1400，上行时分级补偿（>10°: 20%, >3°: 50%, ≤3°: 100%）
+- 下行跳过补偿（重力辅助），同时叠加 5000mV 偏置加速下降
+
+#### 3. 死区 (Deadband)
+- 输出 < `50mV` 时清零，滤除微小抖动
+- 输出限幅在 `MAX_MOTOR_VOLTAGE = 25000mV` 内
+
+#### 4. D 项指数滤波
+- 微分项一阶低通滤波（`α = 0.18`），抑制高频噪声，防止 KD 放大编码器抖动
+- 最近改进：M2_ANGLE_KD 从 205 降至 140，配合 α 加强，消除 -30° 附近极限环振荡
+
+#### 5. M4 下行自适应 KI
+- 上行（角度误差 > 0）：标准 KI = 0.02
+- 下行（角度误差 < −3°）：切换到 DESCEND 模式（KI = 0.0 + 5000mV 偏置）
+- 迟滞：3° 切入，1° 切出，防止抖动
+
+#### 6. 编码器多圈累积 & 初始化保护
+- 处理 GM6020 0~8191 溢出的多圈计数
+- 首次数据到来前不计算增量
+
+## 关键参数速查
 
 ### 角度环（外环）
 
-| 参数 | Motor2 | Motor4 |
-|------|--------|--------|
-| Kp | 3.0 | 3.5 |
-| Ki | 0.03 | 0.08 |
-| Kd | 20.0 | 0.75 |
-| integral_limit | 5000.0 | 5000.0 |
-| output_limit | 4000.0 | 4000.0 |
+| 参数 | M2 (Yaw) | M4 (Pitch) |
+|------|----------|------------|
+| KP | 45.71 | 58.99 |
+| KI | 0.029 | 0.02 / 0.0 (下行) |
+| KD | 140.0 | 29.84 |
+| 积分限幅 | 800 | 800 / 1600 (下行) |
+| 输出限幅 | 6000 | 4000 |
 
 ### 速度环（内环）
 
-| 参数 | Motor2 | Motor4 |
-|------|--------|--------|
-| Kp | 5.0 | 2.0 |
-| Ki | 0.0 | 0.02 |
-| Kd | 1.0 | 1.5 |
-| integral_limit | 6000.0 | 6000.0 |
-| output_limit | 25000.0 | 25000.0 |
+| 参数 | M2 (Yaw) | M4 (Pitch) |
+|------|----------|------------|
+| KP | 1.12 | 3.83 |
+| KI | 0.0 | 0.0 |
+| KD | 0.5 | 0.09 |
+| 积分限幅 | 6000 | 6000 |
+| 输出限幅 | 25000 | 25000 |
 
-### 全局参数
+### 前馈 & 全局参数
 
 | 参数 | 值 | 说明 |
-|------|----|------|
-| MAX_MOTOR_VOLTAGE | 12500 | 电机电压限幅 |
-| DERIVATIVE_ALPHA | 0.2 | 微分低通滤波系数 |
-| MIN_EFFECTIVE_VOLTAGE | 300 | 输出死区（防微振） |
+|------|-----|------|
+| M2_FF_GAIN | 18.0 | 偏航前馈增益 |
+| M2_FF_SOFT_START | 200 counts | 软启动区间 (~8.8°) |
+| M2_FF_OUTPUT_LIMIT | 25000 | 前馈输出限幅 |
+| M2_REVERSE_BIAS_VOLTAGE | 8000 mV | 正向摩擦偏置 |
+| GRAVITY_GAIN_M4 | 1400 | 俯仰重力补偿 |
+| GRAVITY_OFFSET_DEG | −58.0° | 重力零位角 |
+| M4_DESCEND_BIAS_VOLTAGE | 5000 mV | 下行偏置 |
+| MAX_MOTOR_VOLTAGE | 25000 | 最终电压限幅 |
+| MIN_EFFECTIVE_VOLTAGE | 50 | 死区阈值 |
+| DERIVATIVE_ALPHA | 0.18 | D 项低通滤波系数 |
+| INTEGRAL_RESET_GAIN | 0.3 | 过零积分重置系数 |
+| INTEGRAL_DECAY | 0.005 | 每周期积分衰减 |
 
-## VOFA 回传字段
+## 调试数据输出 (VOFA+)
 
-`Usart_RxCallBack_SendVofaJustFloat()` 按 JustFloat 格式发送 4 个 float（帧尾 `0x00 0x00 0x80 0x7f`）：
+VOFA+ 通过 USART1 以 FireWater 协议输出调试帧，包含 10 个 float 通道：
 
-| 序号 | 字段 | 说明 |
-|------|------|------|
-| 1 | motor2_actual_angle_deg | motor2 实际角度（度） |
-| 2 | motor2_target_angle_deg | motor2 目标角度（度） |
-| 3 | motor4_actual_angle_deg | motor4 实际角度（度） |
-| 4 | motor4_target_angle_deg | motor4 目标角度（度） |
+| 通道 | 名称 | 含义 |
+|:----:|------|------|
+| 0 | M2_Current_Angle | M2 当前角度 (°) |
+| 1 | M2_Target_Angle | M2 目标角度 (°) |
+| 2 | M4_Current_Angle | M4 当前角度 (°) |
+| 3 | M4_Target_Angle | M4 目标角度 (°) |
+| 4 | M2_Speed | M2 当前转速 (rpm) |
+| 5 | M2_Target_Speed | M2 目标转速 (rpm, 角度环输出) |
+| 6 | M4_Speed | M4 当前转速 (rpm) |
+| 7 | M4_Target_Speed | M4 目标转速 (rpm, 角度环输出) |
+| 8 | M2_Output | M2 最终输出电压 (mV) |
+| 9 | M4_Output | M4 最终输出电压 (mV) |
 
-## VOFA 滑块调参（v1.2）
+## VOFA 滑块调参
 
 通过 VOFA 上位机滑块实时调整 PID 参数，无需重新编译。
 
-### 接收
+- **协议**：`参数名=值!`（! 结尾），UART4 DMA 空闲中断双缓冲接收
+- **支持命令**：`KP_Angle`, `KI_Angle`, `KD_Angle`, `KP_Velocity`, `KI_Velocity`, `KD_Velocity`，可前缀 `M2_`/`M4_` 指定电机
+- 参数变更时自动清零积分和微分历史，避免 wind-up；传 `−1.0` 保持原值不变
 
-- UART4 DMA 空闲中断双缓冲接收，每行命令以 `!` 结尾。
-- 协议格式：`参数名=值!`（与 JustFloat 兼容的同串口文本下行通道）。
+## 编译与烧录
 
-### 命令列表
+1. 用 Keil MDK-ARM 打开 `MDK-ARM/Cloud_Platform_Debugging_Project.uvprojx`
+2. 编译 (F7)
+3. 通过 ST-Link 烧录 (F8)
+4. 打开 VOFA+，配置 USART1 串口查看调试波形（波特率 921600）
 
-支持角度环和速度环的 Kp/Ki/Kd 三种参数，可指定单个电机或同时设置两个电机：
+## 最近改进日志
 
-| 命令 | 说明 | 示例 |
-|------|------|------|
-| `KP_Angle=值!` | 同时设置两个电机角度环 Kp | `KP_Angle=3.5!` |
-| `KI_Angle=值!` | 同时设置两个电机角度环 Ki | `KI_Angle=0.05!` |
-| `KD_Angle=值!` | 同时设置两个电机角度环 Kd | `KD_Angle=15.0!` |
-| `KP_Velocity=值!` | 同时设置两个电机速度环 Kp | `KP_Velocity=5.0!` |
-| `KI_Velocity=值!` | 同时设置两个电机速度环 Ki | `KI_Velocity=0.01!` |
-| `KD_Velocity=值!` | 同时设置两个电机速度环 Kd | `KD_Velocity=1.2!` |
-| `M2_KP_Angle=值!` | 仅设置 motor2 角度环 Kp | `M2_KP_Angle=3.0!` |
-| `M4_KP_Velocity=值!` | 仅设置 motor4 速度环 Kp | `M4_KP_Velocity=2.2!` |
-| ... | 所有 Kp/Ki/Kd × Angle/Velocity × M2/M4 组合均支持 | |
+| 日期 | 改进项 | 详情 |
+|------|--------|------|
+| 2026-06-21 | M2 震荡修复 | KD 205→140, DERIVATIVE_ALPHA 0.25→0.18, SPEED_KD 0.6→0.5，消除 −30° 附近高频极限环振荡 |
+| - | 死区收窄 | MIN_EFFECTIVE_VOLTAGE 500→50 |
+| - | 积分优化 | INTEGRAL_RESET_GAIN 关闭→0.3, INTEGRAL_LIMIT 5000→800, 添加 0.005 积分衰减 |
+| - | 前馈增强 | M2_FF_GAIN 8.0→18.0, FF_SOFT_START 300→200, 添加方向性摩擦偏置 |
+| - | 重力补偿 | M4 重力前馈 + 下行偏置 + 自适应 KI |
 
-### API
+## 许可证
 
-- `PID_Controller_SetAnglePID(motor_id, kp, ki, kd)` / `PID_Controller_SetSpeedPID(motor_id, kp, ki, kd)`：运行时更新 PID 参数。
-- `PID_Controller_GetAnglePID(motor_id, &kp, &ki, &kd)` / `PID_Controller_GetSpeedPID(motor_id, &kp, &ki, &kd)`：查询当前参数。
-- 参数变更时自动清零积分和微分历史，避免 wind-up。传 `-1.0` 保持原值不变。
-
-## 调参建议
-
-1. **基本原则**：先调速度环，再调角度环。
-2. **速度环 PID**
-   - 先把 Ki 设为 0，调 Kp 到电机能跟踪速度指令但不明显振荡。
-   - 加入 Kd 抑制剩余抖动（当前默认 M2: Kd=1.0, M4: Kd=1.5）。
-   - 最后小幅加入 Ki 消除稳态误差（当前默认 M2: Ki=0, M4: Ki=0.02）。
-3. **角度环 PID**
-   - 角度环影响较慢，主要微调 Kp 和 Kd 改善跟踪精度和减小超调。
-4. **现场注意事项**
-   - 确认系统编码器微分转速稳定（无跳变）后再调高 Kp。
-   - 如输出抖动，检查电机输出死区 `MIN_EFFECTIVE_VOLTAGE` 是否过小。
+MIT License

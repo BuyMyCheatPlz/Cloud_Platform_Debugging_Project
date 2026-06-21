@@ -83,6 +83,12 @@ static int16_t PID_Controller_ComputeSinglePID(PID_ControllerPID_t *pid, float t
   }
 
   error = target - feedback;
+  /* Integral reset on sign change: discard most accumulated integral when
+     error crosses zero, preventing integrator windup from causing overshoot. */
+  if (pid->previous_error * error < 0.0f)
+  {
+    pid->integral *= PID_CONTROLLER_INTEGRAL_RESET_GAIN;
+  }
   /* Integral (simple accumulation with limit) */
   pid->integral += error;
   pid->integral = PID_Controller_ClampFloat(pid->integral, -pid->integral_limit, pid->integral_limit);
@@ -349,6 +355,32 @@ HAL_StatusTypeDef PID_Controller_Update(void)
     motor4_voltage = -PID_CONTROLLER_MAX_MOTOR_VOLTAGE;
   }
 
+  /* M2 (yaw) error-proportional persistent feedforward with soft decay.
+     Full strength when |error| >= SOFT_START; linearly decays to zero
+     inside the soft zone, handing off smoothly to PID with no hard switch. */
+  {
+    int32_t m2_angle_error = pid_motor_2.target_angle_count - pid_motor_2.total_angle_count;
+    if (m2_angle_error != 0)
+    {
+      float m2_ff_base = PID_CONTROLLER_M2_FF_GAIN * (float)m2_angle_error;
+      float m2_ff_decay;
+      float m2_abs_err = (m2_angle_error > 0) ? (float)m2_angle_error : -(float)m2_angle_error;
+      if (m2_abs_err >= PID_CONTROLLER_M2_FF_SOFT_START_COUNT)
+      {
+        m2_ff_decay = 1.0f;
+      }
+      else
+      {
+        m2_ff_decay = m2_abs_err / PID_CONTROLLER_M2_FF_SOFT_START_COUNT;
+      }
+      float m2_ff_voltage = m2_ff_base * m2_ff_decay;
+      m2_ff_voltage = PID_Controller_ClampFloat(m2_ff_voltage,
+                       -PID_CONTROLLER_M2_FF_OUTPUT_LIMIT,
+                        PID_CONTROLLER_M2_FF_OUTPUT_LIMIT);
+      motor2_voltage += (int16_t)m2_ff_voltage;
+    }
+  }
+
   /* M2 (yaw) forward-direction friction bias.
      M2 has almost zero KI (0.002) so integral can't overcome static friction
      on its own when moving forward → ~1.4° steady-state error.
@@ -374,7 +406,7 @@ HAL_StatusTypeDef PID_Controller_Update(void)
     }
   }
 
-  /* Re-clamp M2 after reverse bias */
+  /* Re-clamp M2 after feedforward + reverse bias */
   if (motor2_voltage > PID_CONTROLLER_MAX_MOTOR_VOLTAGE)
   {
     motor2_voltage = PID_CONTROLLER_MAX_MOTOR_VOLTAGE;
